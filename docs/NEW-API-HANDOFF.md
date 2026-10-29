@@ -12,7 +12,7 @@
 |---|---|
 | 现在能接成**出片**渠道吗？ | **不能**。任务文档能写入、能按 id 读回，但服务端 Worker 不接管我们构造的任务（6 种形态 × 100–200s 全部零变化，见 EVIDENCE §5）。 |
 | 现在能接成**元数据**渠道吗？ | 能（配置/模板/风格/积分策略），但那种渠道没有业务价值，不建议做。 |
-| 什么时候可以接？ | 满足 §6「解卡判据」全部三条件之后。届时按 §3/§4/§5 直接写 `relay/channel/videoai/`，**type = 80**。 |
+| 什么时候可以接？ | 满足 §6「解卡判据」全部三条件之后。届时按 §3/§4/§5 直接写 `relay/channel/videoai/`，**渠道号现查（80 已被 Animefy 占用，建议 81）**。 |
 
 **不要在 Worker 解卡之前写 relay 代码**，否则交付的是空壳渠道（提交成功但永远拿不到视频）。
 
@@ -75,7 +75,7 @@ GET  .../documents/videos/{docId}?key=<FIREBASE_API_KEY>
 
 | 项 | 值 |
 |---|---|
-| `constant.ChannelTypeVideoAI` | **80**（`constant/channel.go`，当前最大是 `ChannelTypeCodeAI = 79`） |
+| `constant.ChannelTypeVideoAI` | **开工时现查**：`grep -oE 'ChannelType[A-Za-z0-9_]+ += +[0-9]+' constant/channel.go \| sort -t= -k2 -n \| tail -1`。截至本文写作内置最大为 79（`ChannelTypeCodeAI`），但 **80 已被 Animefy 预留**，建议取 **81** |
 | 模型名 | `videoai-txt2vid` / `videoai-img2vid` / `videoai-vid2vid` / `videoai-deforum` |
 | 计费 | 建议按次（`ai_model_used_credit_counts`：txt2vid=1、img2img=1），时长档位见远端 `deforum_durations` |
 
