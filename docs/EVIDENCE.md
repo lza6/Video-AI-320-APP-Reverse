@@ -60,7 +60,7 @@
 | C `inputs` 结构 | 带 `inputs.<key> = {type,path,url}` | 200s | 无变化 |
 | D `id` 字段 + PATCH | 复刻 `doc().set(merge:true)`，`id==docId` | 144s | 无变化 |
 | E 账号存在（`cerebro-users` credits=0） | 先建账号再提交任务 | 100s | 无变化 |
-| F 完整 `toJson()` 形状 | `id/inputType/status/width/height/usedCreditCount/numFrames/...` 全字段 | 见 `probe_full.log` | 无变化 |
+| F 完整 `toJson()` 形状 | `id/inputType/status/width/height/usedCreditCount/numFrames/...` 全字段 + 账号存在（docId `UbxzvU6Wxz8niArYG2NI`） | 151s | 无变化（`status` 保持 CREATED，`updateTime` 不动） |
 
 **结论**：Worker 的触发条件不在客户端可见字段内，最可能是「服务端定时/触发器 + 私有白名单或账号订阅态」，
 仅靠黑盒写入无法确证。要拿到最后一环必须真机（arm64）动态抓包对比"我们写的文档"与"App 写的文档"
