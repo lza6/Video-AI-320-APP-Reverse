@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Video AI v3.2.0 — 网关 Demo (R1)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 -apple-system,"Segoe UI",Roboto,sans-serif; background:#0b0e14; color:#e6e9ef; }
+  header { padding:16px 22px; border-bottom:1px solid #1d2430; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.2px; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; border:1px solid #2a3444; color:#8fa3bf; }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:18px; padding:18px 22px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background:#111725; border:1px solid #1d2430; border-radius:12px; padding:16px; }
+  .card h2 { font-size:13px; margin:0 0 12px; color:#8fa3bf; text-transform:uppercase; letter-spacing:.6px; }
+  label { display:block; font-size:12px; color:#8fa3bf; margin:10px 0 4px; }
+  textarea, input, select { width:100%; background:#0b0e14; color:#e6e9ef; border:1px solid #263041; border-radius:8px; padding:9px 10px; font:inherit; }
+  textarea { min-height:84px; resize:vertical; }
+  button { margin-top:14px; width:100%; padding:11px; border-radius:9px; border:0; background:linear-gradient(180deg,#3d7bfd,#2f62d6); color:#fff; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:#182132; border:1px solid #263041; color:#c3cde0; }
+  pre { white-space:pre-wrap; word-break:break-word; font-size:12px; margin:0; }
+  .kv { display:grid; grid-template-columns:110px 1fr; gap:4px 10px; font-size:12.5px; }
+  .kv b { color:#8fa3bf; font-weight:500; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11.5px; border:1px solid #2a3444; }
+  .CREATED { color:#e8c46a; border-color:#4a3d1d; }
+  .WAITING { color:#e8c46a; border-color:#4a3d1d; }
+  .PROCESSING { color:#63a8ff; border-color:#1e3a5f; }
+  .COMPLETED { color:#5fd48b; border-color:#1d4430; }
+  .FAILED, .BLOCKED_NO_WORKER { color:#ff7a7a; border-color:#4a2020; }
+  .preview { margin-top:12px; border:1px dashed #263041; border-radius:10px; padding:20px; text-align:center; color:#7f8ea6; }
+  .preview .big { font-size:34px; margin-bottom:6px; }
+  #log { max-height:320px; overflow:auto; }
+  .muted { color:#5f6f88; }
+  .warn { background:#1a1410; border:1px solid #4a3520; color:#e0b880; padding:10px 12px; border-radius:9px; font-size:12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Video AI v3.2.0 · com.codeway.videoapp</h1>
+  <span class="tag" id="mode-tag">mode: …</span>
+  <span class="tag" id="up-tag">upstream: …</span>
+  <span class="tag">协议来源：blutter 反汇编</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>提交任务</h2>
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt">a neon cat walking through rainy Tokyo street, cinematic, 4k</textarea>
+
+    <div class="row">
+      <div>
+        <label for="style">Style</label>
+        <select id="style"><option value="">(default)</option></select>
+      </div>
+      <div>
+        <label for="mode">模式</label>
+        <select id="mode">
+          <option value="mock">MOCK 本地流水线</option>
+          <option value="live">LIVE 真实 Firestore</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="go">生成</button>
+    <button id="refresh-config" class="ghost">拉取远端配置</button>
+    <div class="warn" style="margin-top:12px">
+      LIVE 模式会真实写入 Firestore <code>videos</code> 文档；上游 Worker 是否接管取决于账号/积分（R1 实测未接管，见 docs/PROTOCOL.md §4.3）。
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>任务状态</h2>
+    <div class="kv">
+      <b>job</b><span id="job-id" class="muted">—</span>
+      <b>mode</b><span id="job-mode" class="muted">—</span>
+      <b>status</b><span id="job-status" class="muted">—</span>
+      <b>elapsed</b><span id="job-elapsed" class="muted">—</span>
+      <b>doc</b><span id="job-doc" class="muted">—</span>
+    </div>
+    <div class="preview" id="preview"><div class="big">🎬</div>尚未生成</div>
+    <div id="blocker"></div>
+  </section>
+
+  <section class="card" style="grid-column:1/-1">
+    <h2>远端配置摘要</h2>
+    <div class="kv" id="cfg">加载中…</div>
+  </section>
+
+  <section class="card" style="grid-column:1/-1">
+    <h2>事件日志</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+let currentJob = null, timer = null;
+
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+}
+
+async function jfetch(url, opts) {
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  if (!res.ok) throw new Error(`${res.status} ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  return data;
+}
+
+async function loadHealth() {
+  try {
+    const h = await jfetch('/health');
+    $('mode-tag').textContent = `mode: ${h.resolved}`;
+    $('up-tag').textContent = `upstream: cfg=${h.upstream.config || '—'} user=${h.upstream.user || '—'} fs=${h.upstream.firestore || '—'}`;
+    log(`health ok, uid=${h.uid || '—'}`);
+  } catch (e) { log('health 失败: ' + e.message); }
+}
+
+async function loadConfig() {
+  try {
+    const c = await jfetch('/api/config');
+    const s = c.summary;
+    const rows = [
+      ['templates', s.templates], ['styles', s.styles], ['ai models', (s.ai_models || []).join(', ')],
+      ['min version', s.min_version], ['pricing tier', s.pricing_tier],
+      ['credits', JSON.stringify(s.credit_limits)], ['usage/credit', JSON.stringify(s.ai_model_used_credit_counts)],
+      ['free quota', JSON.stringify(s.ai_model_remaining_times)],
+      ['txt2vid', JSON.stringify(s.txt2vid)],
+    ];
+    $('cfg').innerHTML = rows.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('');
+    const sel = $('style');
+    sel.innerHTML = '<option value="">(default)</option>';
+    (s.style_sample || []).forEach(([id, st]) => {
+      const o = document.createElement('option');
+      o.value = id; o.textContent = `${id} — ${st.name || ''}`;
+      sel.appendChild(o);
+    });
+    log(`远端配置 OK：${c.keys} 个键，模板 ${s.templates}，风格 ${s.styles}`);
+  } catch (e) { log('配置拉取失败: ' + e.message); }
+}
+
+function render(job) {
+  $('job-id').textContent = job.job_id || job.id || '—';
+  $('job-mode').textContent = job.mode || '—';
+  $('job-elapsed').textContent = job.elapsed != null ? job.elapsed + 's' : '—';
+  $('job-doc').textContent = job.docId || '—';
+  const st = job.status || '—';
+  $('job-status').innerHTML = `<span class="pill ${st}">${st}</span>`;
+  $('blocker').innerHTML = job.blocker ? `<div class="warn" style="margin-top:12px">${job.blocker}</div>` : '';
+  if (st === 'COMPLETED') {
+    if (job.outputVideoUrl) {
+      $('preview').innerHTML = `<video src="${job.outputVideoUrl}" controls style="width:100%;border-radius:8px"></video>`;
+    } else {
+      const p = job.preview || {};
+      $('preview').innerHTML = `<div class="big">✅</div><div>${p.kind === 'mock' ? 'MOCK 完成（未触达上游）' : '完成'}</div>
+        <div class="muted" style="margin-top:6px">${p.note || ''}</div>`;
+    }
+  } else if (st === 'FAILED') {
+    $('preview').innerHTML = `<div class="big">⚠️</div><pre>${job.error || 'failed'}</pre>`;
+  } else if (st === 'PROCESSING' || st === 'WAITING') {
+    $('preview').innerHTML = `<div class="big">⏳</div><div>${st}…</div>`;
+  }
+}
+
+async function poll(jobId) {
+  clearInterval(timer);
+  timer = setInterval(async () => {
+    try {
+      const job = await jfetch('/v1/jobs/' + jobId);
+      render(job);
+      if (['COMPLETED', 'FAILED', 'BLOCKED_NO_WORKER'].includes(job.status)) {
+        clearInterval(timer); log('任务结束: ' + job.status);
+      }
+    } catch (e) { clearInterval(timer); log('轮询失败: ' + e.message); }
+  }, 1500);
+}
+
+$('go').onclick = async () => {
+  const btn = $('go'); btn.disabled = true;
+  try {
+    const body = { prompt: $('prompt').value.trim(), mode: $('mode').value };
+    if ($('style').value) body.style_id = $('style').value;
+    log(`提交任务 (${body.mode})…`);
+    const r = await jfetch('/v1/jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    log(`创建: ${JSON.stringify(r)}`);
+    render({ ...r, id: r.job_id });
+    poll(r.job_id);
+  } catch (e) { log('提交失败: ' + e.message); }
+  finally { btn.disabled = false; }
+};
+
+$('refresh-config').onclick = loadConfig;
+
+(async () => { await loadHealth(); await loadConfig(); })();
+</script>
+</body>
+</html>
