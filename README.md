@@ -1,4 +1,7 @@
-# Video AI v3.2.0 (com.codeway.videoapp) — R1 逆向交付
+# Video AI v3.2.0 (com.codeway.videoapp) — 逆向交付 R1+R2
+
+> **状态：协议层已 100% 还原；真实出片未打通**（服务端 Worker 不接管客户端构造的任务）。
+> 现在**不要**把它接成 new-api 出片渠道，解卡判据见 `docs/NEW-API-HANDOFF.md §6`。
 
 Codeway 出品 Flutter 应用（Wonder/Video AI 同族）。R1 完成**协议层全量还原 + 本地网关 + Demo + 压测**，
 真实出片链路卡在账号/素材授权（详见 `docs/PROTOCOL.md` §4.3、§6）。
@@ -18,6 +21,9 @@ Codeway 出品 Flutter 应用（Wonder/Video AI 同族）。R1 完成**协议层
 
 ```
 docs/PROTOCOL.md      # 完整协议还原（端点/签名/文档结构/规则实测/证据等级）
+docs/EVIDENCE.md      # 探针台账（sig 真值校验 A/B、create-only、6 种 Worker 形态）
+docs/NEW-API-HANDOFF.md # new-api 渠道对接交接书（type=80、TaskAdaptor 清单、解卡判据、红线）
+docs/PLAYBOOK.md      # 可复用方法论：Firebase/Firestore 后端型 App 逆向 SOP
 vapi/cerebro.py       # config-api + HMAC 签名的 /user/android、/log/android
 vapi/firestore.py     # Firestore REST 任务客户端（create/get/轮询/状态机常量）
 vapi/app.py           # FastAPI 网关（MOCK/LIVE/AUTO）+ /api/live/probe 规则探针
